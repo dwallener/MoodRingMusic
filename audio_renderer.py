@@ -31,36 +31,32 @@ class AudioRenderer:
         intervals = self.SCALES.get(scale_type, self.SCALES["major"])
         return [root_freq * (2 ** (i / 12)) for i in intervals]
 
-    def generate_song_audio(self, bpm, key_root="C", scale_type="major", duration_sec=4):
+    def generate_song_audio(self, bpm, key_root="C", scale_type="major", melody_notes=None, duration_sec=4):
         beats_per_sec = bpm / 60
         t = np.linspace(0, duration_sec, int(self.sample_rate * duration_sec), endpoint=False)
         modulation = (np.sin(2 * np.pi * beats_per_sec * t) > 0).astype(float)
 
-        scale_freqs = self.get_scale_frequencies(key_root, scale_type)
-
-        # Rhythm section (Kick + Snare)
+        # Base rhythm section
         kick = self.sine_wave(60, duration_sec) * modulation
         snare = self.noise_burst(duration_sec) * (1 - modulation)
-        pad = sum(self.sine_wave(f, duration_sec) for f in scale_freqs[:3]) * 0.2
+        pad = sum(self.sine_wave(f, duration_sec) for f in self.get_scale_frequencies(key_root, scale_type)[:3]) * 0.2
 
-        # Melody with BPM-tied timing
+        # Melody playback directly from provided melody_notes
         melody = np.zeros_like(t)
-        beats_total = duration_sec * beats_per_sec
-        melody_notes = scale_freqs[:4]  # Pick first 4 notes from scale
+        if melody_notes:
+            note_duration_sec = 60 / bpm  # One note per beat
+            for i, midi_note in enumerate(melody_notes):
+                freq = 440.0 * (2 ** ((midi_note - 69) / 12))  # Convert MIDI note to frequency
+                start = int(i * note_duration_sec * self.sample_rate)
+                end = int((i + 1) * note_duration_sec * self.sample_rate)
+                if end > len(t):  # Avoid overflow
+                    break
+                tone = self.square_wave(freq, (end - start) / self.sample_rate)
+                melody[start:end] = tone[:end - start]
 
-        # One melody note per beat
-        for i in range(int(beats_total)):
-            freq = melody_notes[i % len(melody_notes)]
-            start = int(i * (self.sample_rate / beats_per_sec))
-            end = int((i + 1) * (self.sample_rate / beats_per_sec))
-            if end > len(t):  # Prevent overflow
-                break
-            tone = self.square_wave(freq * 2, (end - start) / self.sample_rate)
-            melody[start:end] = tone[:end - start]
+            melody *= 0.8  # Adjust melody volume
 
-        melody *= 0.8  # Boost melody volume slightly
-
-        # Mix tracks
+        # Mix and normalize
         combined = kick + snare + pad + melody
         combined = combined / np.max(np.abs(combined))
         audio_wave = (combined * 32767).astype(np.int16)

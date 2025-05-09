@@ -2,6 +2,10 @@ import mido
 import io
 import random
 
+from markov_melody import MarkovMelodyGenerator
+from motif_melody import MotifMelodyGenerator
+
+
 class MidiGenerator:
     KEY_MAPPINGS = {
         ("Enhance", "High"): ("C", "major"),
@@ -39,7 +43,13 @@ class MidiGenerator:
         track.append(mido.MetaMessage('set_tempo', tempo=tempo))
 
         ticks = int(self.ticks_per_beat / 2)
-        for note in random.choices(scale_notes, k=8):
+
+        # Choose the melody generator you want to use:
+        melody_generator = MarkovMelodyGenerator(scale_notes)  # Or MotifMelodyGenerator(scale_notes)
+        melody_notes = melody_generator.generate_melody(length=8)
+
+        # Add the generated melody notes to the MIDI track:
+        for note in melody_notes:
             track.append(mido.Message('note_on', note=note, velocity=64, time=0))
             track.append(mido.Message('note_off', note=note, velocity=64, time=ticks))
 

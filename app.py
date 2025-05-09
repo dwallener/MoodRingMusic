@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 from midi_generator import MidiGenerator
 from audio_renderer import AudioRenderer
+from markov_melody import MarkovMelodyGenerator
+from motif_melody import MotifMelodyGenerator
 
 # ----- Constants -----
 allowed_activities = ["work", "sleep", "free", "play", "family"]
@@ -105,23 +107,44 @@ with col2:
         st.session_state.show_play_prompt = True
         st.rerun()
 
-if st.session_state.get("show_play_prompt", False):
-    st.markdown("### 🎧 New sound ready! Click ▶️ to listen.")
-    st.session_state.show_play_prompt = False
+# ----- Select Melody Generator -----
+melody_method = st.selectbox(
+    "🎶 Select Melody Generator",
+    options=["Markov", "Motif"],
+    index=0
+)
 
-# ----- Audio and MIDI Generation -----
-audio_renderer = AudioRenderer()
+# ----- Key Selection for Consistent Mood -----
 key_root, scale_type = MidiGenerator.KEY_MAPPINGS.get(
     (alignment.replace('✅ ', '').replace('❌ ', '').replace('⚪ ', ''), current_energy),
     ("C", "major")
 )
-audio_wave = audio_renderer.generate_song_audio(current_bpm, key_root, scale_type)
+
+# ----- Melody Generation -----
+scale_notes = MidiGenerator.NOTE_MAP
+scale_intervals = MidiGenerator.SCALES[scale_type]
+scale_midi_notes = [scale_notes[key_root] + i for i in scale_intervals]
+
+if melody_method == "Markov":
+    melody_generator = MarkovMelodyGenerator(scale_midi_notes)
+else:
+    melody_generator = MotifMelodyGenerator(scale_midi_notes)
+
+melody_notes = melody_generator.generate_melody(length=8)
+
+# ----- Audio and MIDI Generation -----
+audio_renderer = AudioRenderer()
+audio_wave = audio_renderer.generate_song_audio(
+    bpm=current_bpm, 
+    key_root=key_root, 
+    scale_type=scale_type, 
+    melody_notes=melody_notes
+)
 audio_buffer = audio_renderer.export_wav(audio_wave)
 st.audio(audio_buffer, format="audio/wav")
 
-# Pass current alignment and energy for mood-based key selection
 midi_gen = MidiGenerator(bpm=current_bpm, alignment=alignment, energy=current_energy)
-midi_gen.generate_song()
+midi_gen.generate_song()  # This should also use melody_notes if implemented to sync perfectly
 midi_buffer = midi_gen.export()
 
 st.download_button("📥 Download Current Hour MIDI", data=midi_buffer, file_name=f"hour_{current_hour:02d}.mid", mime="audio/midi")
@@ -154,3 +177,5 @@ for hour in range(24):
         index=allowed_activities.index(st.session_state.activity_schedule[hour]),
         key=f"activity_{hour}"
     )
+
+    

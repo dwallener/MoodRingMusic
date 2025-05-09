@@ -53,6 +53,15 @@ def calculate_bpm(energy, alignment):
 # ----- Streamlit UI -----
 st.title("🎵 Mood Ring Music")
 
+import os
+
+def is_streamlit_cloud():
+    return "STREAMLIT_SERVER_URL" in os.environ or "STREMLIT_SHARE_ENV" in os.environ
+
+if is_streamlit_cloud():
+    st.info("🌐 Running on Streamlit Cloud")
+else:
+    st.info("🖥️ Running Locally")
 if "current_hour" not in st.session_state:
     st.session_state.current_hour = 7
 if "activity_schedule" not in st.session_state:

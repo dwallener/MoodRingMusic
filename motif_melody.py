@@ -49,7 +49,6 @@ class MotifMelodyGenerator:
             else:
                 new_motif = motif
 
-            # Snap notes back to the scale after transformation
             new_motif = self._snap_to_scale(new_motif)
             melody.extend(new_motif)
             last_transform = transform

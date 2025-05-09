@@ -6,8 +6,7 @@ class MarkovMelodyGenerator:
         self.transition_prob = self._build_simple_transitions()
 
     def _build_simple_transitions(self):
-        # Simple random walk probabilities
-        return {-1: 0.3, 0: 0.4, 1: 0.3}
+        return {-1: 0.3, 0: 0.4, 1: 0.3}  # Move down, stay, move up
 
     def generate_melody(self, length=16, start_note=None):
         melody = []

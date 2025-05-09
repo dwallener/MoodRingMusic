@@ -19,26 +19,17 @@ bpm_mapping = {
 }
 
 def time_of_day_symbol(hour):
-    if 0 <= hour <= 4 or 21 <= hour <= 23:
-        return "🌙"
-    elif 5 <= hour <= 6:
-        return "🌅"
-    elif 7 <= hour <= 18:
-        return "☀️"
-    elif 19 <= hour <= 20:
-        return "🌇"
-    return "🌙"
+    return ["🌙", "🌅", "☀️", "🌇"][min(hour // 6, 3)]
 
 def calculate_alignment(activity, energy):
-    if activity == "sleep" and energy in ["Low", "Lowest"]:
-        return "✅ Enhance"
-    if activity == "work" and energy == "High":
-        return "✅ Enhance"
-    if activity == "play" and energy in ["Moderate", "High"]:
-        return "✅ Enhance"
-    if activity == "family" and energy in ["Moderate", "Rising", "Decreasing"]:
-        return "✅ Enhance"
-    if activity == "free" and energy in ["Moderate", "Decreasing"]:
+    rules = {
+        "sleep": ["Low", "Lowest"],
+        "work": ["High"],
+        "play": ["Moderate", "High"],
+        "family": ["Moderate", "Rising", "Decreasing"],
+        "free": ["Moderate", "Decreasing"]
+    }
+    if energy in rules.get(activity, []):
         return "✅ Enhance"
     if activity == "work" and energy in ["Low", "Lowest", "Decreasing"]:
         return "❌ Oppose"
@@ -90,22 +81,16 @@ with col2:
         st.session_state.current_hour = (current_hour + 1) % 24
         st.rerun()
 
-# ----- Melody Generator Selection -----
-melody_method = st.selectbox(
-    "🎶 Select Melody Generator",
-    options=["Markov", "Motif"],
-    index=0
-)
-
+# Melody Generator and Length Control
+melody_method = st.selectbox("🎶 Select Melody Generator", ["Markov", "Motif"])
 melody_length = st.slider("🎼 Melody Length (notes)", min_value=8, max_value=64, value=16, step=4)
+audio_duration = st.slider("⏱️ Audio Duration (seconds)", min_value=10, max_value=60, value=30, step=5)
 
-# ----- Determine Key and Scale -----
 key_root, scale_type = MidiGenerator.KEY_MAPPINGS.get(
     (alignment.replace('✅ ', '').replace('❌ ', '').replace('⚪ ', ''), current_energy),
     ("C", "major")
 )
 
-# ----- Generate Melody -----
 scale_notes = MidiGenerator.NOTE_MAP
 scale_intervals = MidiGenerator.SCALES[scale_type]
 scale_midi_notes = [scale_notes[key_root] + i for i in scale_intervals]
@@ -117,25 +102,25 @@ else:
 
 melody_notes = melody_generator.generate_melody(length=melody_length)
 
-# ----- Audio and MIDI Output -----
+# Audio and MIDI Generation
 audio_renderer = AudioRenderer()
 audio_wave = audio_renderer.generate_song_audio(
     bpm=current_bpm,
     key_root=key_root,
     scale_type=scale_type,
     melody_notes=melody_notes,
-    duration_sec=30  # Increased from 4 to 30 seconds
+    duration_sec=audio_duration
 )
 audio_buffer = audio_renderer.export_wav(audio_wave)
 st.audio(audio_buffer, format="audio/wav")
 
 midi_gen = MidiGenerator(bpm=current_bpm, alignment=alignment, energy=current_energy)
-midi_gen.generate_song()  # Consider passing melody_notes directly if you want perfect sync
+midi_gen.generate_song()
 midi_buffer = midi_gen.export()
 
 st.download_button("📥 Download MIDI", data=midi_buffer, file_name=f"hour_{current_hour:02d}.mid", mime="audio/midi")
 
-# ----- Full Schedule -----
+# Schedule Table
 combined_schedule = []
 for hour in range(24):
     activity = st.session_state.activity_schedule[hour]

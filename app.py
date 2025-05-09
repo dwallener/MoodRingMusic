@@ -1,53 +1,18 @@
 import streamlit as st
-import numpy as np
-import io
-import mido
-from scipy.io import wavfile
+import pandas as pd
+from midi_generator import MidiGenerator
+from audio_renderer import AudioRenderer
 
-# --- Sine Wave Audio Generation ---
-def generate_sine_wave(frequency, duration_sec, bpm, sample_rate=44100):
-    t = np.linspace(0, duration_sec, int(sample_rate * duration_sec), endpoint=False)
-    beats_per_sec = bpm / 60
-    modulation = (np.sin(2 * np.pi * beats_per_sec * t) > 0).astype(float)
-    audio_wave = 0.5 * np.sin(2 * np.pi * frequency * t) * modulation
-    return (audio_wave * 32767).astype(np.int16)  # 16-bit PCM
-
-# --- Generate Audio Bytes ---
-def generate_audio_clip(bpm, duration_sec=4, frequency=440):
-    audio = generate_sine_wave(frequency, duration_sec, bpm)
-    buffer = io.BytesIO()
-    wavfile.write(buffer, 44100, audio)
-    buffer.seek(0)
-    return buffer
-
-# --- Generate Simple MIDI File ---
-def generate_midi_clip(bpm, duration_sec=4):
-    mid = mido.MidiFile()
-    track = mido.MidiTrack()
-    mid.tracks.append(track)
-
-    tempo = mido.bpm2tempo(bpm)
-    track.append(mido.MetaMessage('set_tempo', tempo=tempo))
-
-    ticks_per_beat = mid.ticks_per_beat
-    note_duration = int(ticks_per_beat / 2)  # Eighth notes
-    num_notes = int((bpm / 60) * duration_sec * 2)
-
-    for _ in range(num_notes):
-        track.append(mido.Message('note_on', note=60, velocity=64, time=0))
-        track.append(mido.Message('note_off', note=60, velocity=64, time=note_duration))
-
-    buffer = io.BytesIO()
-    mid.save(file=buffer)
-    buffer.seek(0)
-    return buffer
-
-# --- Streamlit App ---
-st.title("🎵 Mood Ring Music - Live Prototype")
-
-if "current_hour" not in st.session_state:
-    st.session_state.current_hour = 7  # Start at 07:00h
-
+# ----- Constants -----
+allowed_activities = ["work", "sleep", "free", "play", "family"]
+diurnal_energy = [
+    "Low", "Low", "Lowest", "Lowest", "Lowest", "Low",      
+    "Rising", "Rising",                                    
+    "High", "High", "High", "High",                         
+    "Moderate", "Moderate",                                 
+    "High", "High", "High", "Moderate", "Moderate", "Moderate",  
+    "Decreasing", "Decreasing", "Low", "Low"                
+]
 bpm_mapping = {
     "Lowest": 80,
     "Low": 90,
@@ -57,29 +22,130 @@ bpm_mapping = {
     "Decreasing": 100
 }
 
-diurnal_cycle = [
-    "Low", "Low", "Lowest", "Lowest", "Lowest", "Low",      
-    "Rising", "Rising",                                    
-    "High", "High", "High", "High",                         
-    "Moderate", "Moderate",                                 
-    "High", "High", "High", "Moderate", "Moderate", "Moderate",  
-    "Decreasing", "Decreasing", "Low", "Low"                
-]
+def time_of_day_symbol(hour):
+    if 0 <= hour <= 4 or 21 <= hour <= 23:
+        return "🌙"
+    elif 5 <= hour <= 6:
+        return "🌅"
+    elif 7 <= hour <= 18:
+        return "☀️"
+    elif 19 <= hour <= 20:
+        return "🌇"
+    return "🌙"
+
+def calculate_alignment(activity, energy):
+    if activity == "sleep" and energy in ["Low", "Lowest"]:
+        return "✅ Enhance"
+    if activity == "work" and energy == "High":
+        return "✅ Enhance"
+    if activity == "play" and energy in ["Moderate", "High"]:
+        return "✅ Enhance"
+    if activity == "family" and energy in ["Moderate", "Rising", "Decreasing"]:
+        return "✅ Enhance"
+    if activity == "free" and energy in ["Moderate", "Decreasing"]:
+        return "✅ Enhance"
+    if activity == "work" and energy in ["Low", "Lowest", "Decreasing"]:
+        return "❌ Oppose"
+    if activity == "sleep" and energy in ["High", "Rising"]:
+        return "❌ Oppose"
+    if activity == "play" and energy in ["Low", "Lowest"]:
+        return "❌ Oppose"
+    return "⚪ Neutral"
+
+def alignment_modifier(alignment, energy):
+    if "Enhance" in alignment:
+        if energy in ["High", "Rising"]:
+            return 10
+        elif energy in ["Low", "Decreasing"]:
+            return -10
+    if "Oppose" in alignment:
+        if energy in ["High", "Rising"]:
+            return -10
+        elif energy in ["Low", "Decreasing"]:
+            return 10
+    return 0
+
+def calculate_bpm(energy, alignment):
+    bpm_value = bpm_mapping[energy] + alignment_modifier(alignment, energy)
+    return max(min(bpm_value, 160), 80)
+
+# ----- Streamlit App -----
+st.title("🎵 Mood Ring Music")
+
+if "current_hour" not in st.session_state:
+    st.session_state.current_hour = 7
+if "activity_schedule" not in st.session_state:
+    st.session_state.activity_schedule = ["sleep"] * 6 + ["family"] * 2 + ["work"] * 4 + \
+        ["free"] * 2 + ["work"] * 3 + ["family"] * 2 + ["play"] * 2 + ["free", "sleep", "sleep"]
+if "show_play_prompt" not in st.session_state:
+    st.session_state.show_play_prompt = False
 
 current_hour = st.session_state.current_hour
-current_energy = diurnal_cycle[current_hour]
-current_bpm = bpm_mapping[current_energy]
+current_energy = diurnal_energy[current_hour]
+current_activity = st.session_state.activity_schedule[current_hour]
+alignment = calculate_alignment(current_activity, current_energy)
+current_bpm = calculate_bpm(current_energy, alignment)
 
 st.subheader(f"🕒 Current Time: {current_hour:02d}:00")
+st.write(f"**Activity:** {current_activity}")
 st.write(f"**Diurnal Energy:** {current_energy}")
+st.write(f"**Alignment:** {alignment}")
 st.write(f"**BPM:** {current_bpm}")
 
-audio_buffer = generate_audio_clip(current_bpm)
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("⬅️ Back Hour"):
+        st.session_state.current_hour = (current_hour - 1) % 24
+        st.session_state.show_play_prompt = True
+        st.rerun()
+
+with col2:
+    if st.button("➡️ Advance Hour"):
+        st.session_state.current_hour = (current_hour + 1) % 24
+        st.session_state.show_play_prompt = True
+        st.rerun()
+
+if st.session_state.get("show_play_prompt", False):
+    st.markdown("### 🎧 New sound ready! Click ▶️ to listen.")
+    st.session_state.show_play_prompt = False
+
+# ----- Generate Audio and MIDI -----
+audio_renderer = AudioRenderer()
+audio_wave = audio_renderer.square_wave_arpeggio(440, current_bpm)
+audio_buffer = audio_renderer.export_wav(audio_wave)
 st.audio(audio_buffer, format="audio/wav")
 
-midi_buffer = generate_midi_clip(current_bpm)
-st.download_button("📥 Download MIDI", data=midi_buffer, file_name="mood_ring_music.mid", mime="audio/midi")
+midi_gen = MidiGenerator(bpm=current_bpm)
+midi_gen.add_note_sequence([60, 64, 67])  # C major chord
+midi_buffer = midi_gen.export()
 
-if st.button("➡️ Advance Hour"):
-    st.session_state.current_hour = (current_hour + 1) % 24
-    st.experimental_rerun()
+st.download_button("📥 Download Current Hour MIDI", data=midi_buffer, file_name=f"hour_{current_hour:02d}.mid", mime="audio/midi")
+
+# ----- Full Schedule -----
+combined_schedule = []
+for hour in range(24):
+    activity = st.session_state.activity_schedule[hour]
+    energy = diurnal_energy[hour]
+    align = calculate_alignment(activity, energy)
+    bpm = calculate_bpm(energy, align)
+    combined_schedule.append({
+        "Hour": f"{hour:02d}:00",
+        "🕒": time_of_day_symbol(hour),
+        "Alignment": align,
+        "Activity": activity,
+        "Diurnal Energy": energy,
+        "BPM": bpm
+    })
+
+df = pd.DataFrame(combined_schedule)
+st.subheader("📋 Full 24-Hour Schedule")
+st.dataframe(df.style.hide(axis="index"), use_container_width=True)
+
+st.subheader("✏️ Edit Activities by Hour")
+for hour in range(24):
+    st.session_state.activity_schedule[hour] = st.selectbox(
+        f"{hour:02d}:00 {time_of_day_symbol(hour)}",
+        allowed_activities,
+        index=allowed_activities.index(st.session_state.activity_schedule[hour]),
+        key=f"activity_{hour}"
+    )

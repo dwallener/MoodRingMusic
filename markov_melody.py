@@ -6,10 +6,10 @@ class MarkovMelodyGenerator:
         self.transition_prob = self._build_simple_transitions()
 
     def _build_simple_transitions(self):
-        # Simple: Equal chance to move up, down, or stay on same note
+        # Simple random walk probabilities
         return {-1: 0.3, 0: 0.4, 1: 0.3}
 
-    def generate_melody(self, length=8, start_note=None):
+    def generate_melody(self, length=16, start_note=None):
         melody = []
         current_idx = self.scale_notes.index(start_note) if start_note in self.scale_notes else len(self.scale_notes) // 2
 
@@ -19,4 +19,3 @@ class MarkovMelodyGenerator:
             current_idx = max(0, min(len(self.scale_notes) - 1, current_idx + move))
 
         return melody
-

@@ -9,19 +9,13 @@ from motif_melody import MotifMelodyGenerator
 allowed_activities = ["work", "sleep", "free", "play", "family"]
 diurnal_energy = [
     "Low", "Low", "Lowest", "Lowest", "Lowest", "Low",
-    "Rising", "Rising",
-    "High", "High", "High", "High",
-    "Moderate", "Moderate",
-    "High", "High", "High", "Moderate", "Moderate", "Moderate",
-    "Decreasing", "Decreasing", "Low", "Low"
+    "Rising", "Rising", "High", "High", "High", "High",
+    "Moderate", "Moderate", "High", "High", "High", "Moderate",
+    "Moderate", "Moderate", "Decreasing", "Decreasing", "Low", "Low"
 ]
 bpm_mapping = {
-    "Lowest": 80,
-    "Low": 90,
-    "Rising": 110,
-    "Moderate": 120,
-    "High": 140,
-    "Decreasing": 100
+    "Lowest": 80, "Low": 90, "Rising": 110,
+    "Moderate": 120, "High": 140, "Decreasing": 100
 }
 
 def time_of_day_symbol(hour):
@@ -56,22 +50,16 @@ def calculate_alignment(activity, energy):
 
 def alignment_modifier(alignment, energy):
     if "Enhance" in alignment:
-        if energy in ["High", "Rising"]:
-            return 10
-        elif energy in ["Low", "Decreasing"]:
-            return -10
+        return 10 if energy in ["High", "Rising"] else -10
     if "Oppose" in alignment:
-        if energy in ["High", "Rising"]:
-            return -10
-        elif energy in ["Low", "Decreasing"]:
-            return 10
+        return -10 if energy in ["High", "Rising"] else 10
     return 0
 
 def calculate_bpm(energy, alignment):
     bpm_value = bpm_mapping[energy] + alignment_modifier(alignment, energy)
     return max(min(bpm_value, 160), 80)
 
-# ----- Streamlit App -----
+# ----- Streamlit UI -----
 st.title("🎵 Mood Ring Music")
 
 if "current_hour" not in st.session_state:
@@ -79,8 +67,6 @@ if "current_hour" not in st.session_state:
 if "activity_schedule" not in st.session_state:
     st.session_state.activity_schedule = ["sleep"] * 6 + ["family"] * 2 + ["work"] * 4 + \
         ["free"] * 2 + ["work"] * 3 + ["family"] * 2 + ["play"] * 2 + ["free", "sleep", "sleep"]
-if "show_play_prompt" not in st.session_state:
-    st.session_state.show_play_prompt = False
 
 current_hour = st.session_state.current_hour
 current_energy = diurnal_energy[current_hour]
@@ -98,29 +84,28 @@ col1, col2 = st.columns(2)
 with col1:
     if st.button("⬅️ Back Hour"):
         st.session_state.current_hour = (current_hour - 1) % 24
-        st.session_state.show_play_prompt = True
         st.rerun()
-
 with col2:
     if st.button("➡️ Advance Hour"):
         st.session_state.current_hour = (current_hour + 1) % 24
-        st.session_state.show_play_prompt = True
         st.rerun()
 
-# ----- Select Melody Generator -----
+# ----- Melody Generator Selection -----
 melody_method = st.selectbox(
     "🎶 Select Melody Generator",
     options=["Markov", "Motif"],
     index=0
 )
 
-# ----- Key Selection for Consistent Mood -----
+melody_length = st.slider("🎼 Melody Length (notes)", min_value=8, max_value=64, value=16, step=4)
+
+# ----- Determine Key and Scale -----
 key_root, scale_type = MidiGenerator.KEY_MAPPINGS.get(
     (alignment.replace('✅ ', '').replace('❌ ', '').replace('⚪ ', ''), current_energy),
     ("C", "major")
 )
 
-# ----- Melody Generation -----
+# ----- Generate Melody -----
 scale_notes = MidiGenerator.NOTE_MAP
 scale_intervals = MidiGenerator.SCALES[scale_type]
 scale_midi_notes = [scale_notes[key_root] + i for i in scale_intervals]
@@ -130,24 +115,25 @@ if melody_method == "Markov":
 else:
     melody_generator = MotifMelodyGenerator(scale_midi_notes)
 
-melody_notes = melody_generator.generate_melody(length=8)
+melody_notes = melody_generator.generate_melody(length=melody_length)
 
-# ----- Audio and MIDI Generation -----
+# ----- Audio and MIDI Output -----
 audio_renderer = AudioRenderer()
 audio_wave = audio_renderer.generate_song_audio(
-    bpm=current_bpm, 
-    key_root=key_root, 
-    scale_type=scale_type, 
-    melody_notes=melody_notes
+    bpm=current_bpm,
+    key_root=key_root,
+    scale_type=scale_type,
+    melody_notes=melody_notes,
+    duration_sec=30  # Increased from 4 to 30 seconds
 )
 audio_buffer = audio_renderer.export_wav(audio_wave)
 st.audio(audio_buffer, format="audio/wav")
 
 midi_gen = MidiGenerator(bpm=current_bpm, alignment=alignment, energy=current_energy)
-midi_gen.generate_song()  # This should also use melody_notes if implemented to sync perfectly
+midi_gen.generate_song()  # Consider passing melody_notes directly if you want perfect sync
 midi_buffer = midi_gen.export()
 
-st.download_button("📥 Download Current Hour MIDI", data=midi_buffer, file_name=f"hour_{current_hour:02d}.mid", mime="audio/midi")
+st.download_button("📥 Download MIDI", data=midi_buffer, file_name=f"hour_{current_hour:02d}.mid", mime="audio/midi")
 
 # ----- Full Schedule -----
 combined_schedule = []
@@ -177,5 +163,3 @@ for hour in range(24):
         index=allowed_activities.index(st.session_state.activity_schedule[hour]),
         key=f"activity_{hour}"
     )
-
-    

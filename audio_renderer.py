@@ -1,3 +1,4 @@
+
 import numpy as np
 import io
 from scipy.io import wavfile
@@ -28,5 +29,3 @@ class AudioRenderer:
         wavfile.write(buffer, self.sample_rate, audio_data)
         buffer.seek(0)
         return buffer
-
-

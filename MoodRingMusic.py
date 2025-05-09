@@ -48,31 +48,36 @@ def calculate_alignment(activity, energy):
     
     return "⚪ Neutral"
 
-# Calculate Base BPS from Diurnal Energy
-def base_bps(energy):
+# Base BPM Mapping
+def base_bpm(energy):
     mapping = {
-        "Lowest": 1.0,
-        "Low": 1.5,
-        "Rising": 2.0,
-        "Moderate": 2.5,
-        "High": 3.0,
-        "Decreasing": 2.0
+        "Lowest": 80,
+        "Low": 90,
+        "Rising": 110,
+        "Moderate": 120,
+        "High": 140,
+        "Decreasing": 100
     }
-    return mapping.get(energy, 2.0)
+    return mapping.get(energy, 120)
 
-# Calculate Alignment Modifier
-def alignment_modifier(alignment):
+def alignment_modifier(alignment, energy):
     if "Enhance" in alignment:
-        return 0.5
+        if energy in ["High", "Rising"]:
+            return 10  # Boost BPM during high energy periods
+        elif energy in ["Low", "Decreasing"]:
+            return -10  # Calm things down during low energy periods
     if "Oppose" in alignment:
-        return -0.5
-    return 0.0
+        if energy in ["High", "Rising"]:
+            return -10  # Calm things down when too energized
+        elif energy in ["Low", "Decreasing"]:
+            return 10  # Try to wake things up
+    return 0  # Neutral stays neutral or moderate periods stay stable
 
-# Final BPS Calculation
-def calculate_bps(energy, alignment):
-    bps_value = base_bps(energy) + alignment_modifier(alignment)
-    return round(max(bps_value, 0.5), 2)  # Ensure minimum BPS of 0.5
-
+# Final BPM Calculation
+def calculate_bpm(energy, alignment):
+    bpm_value = base_bpm(energy) + alignment_modifier(alignment, energy)
+    return max(min(bpm_value, 160), 80)  # Clamp between 80 and 160
+    
 # Initialize Calendar in Session State
 if "activity_schedule" not in st.session_state:
     st.session_state.activity_schedule = [
@@ -92,7 +97,7 @@ for hour in range(24):
     activity = st.session_state.activity_schedule[hour]
     energy = diurnal_energy[hour]
     alignment = calculate_alignment(activity, energy)
-    bps = calculate_bps(energy, alignment)
+    bpm = calculate_bpm(energy, alignment)
     
     combined_schedule.append({
         "Hour": f"{hour:02d}:00",
@@ -100,7 +105,7 @@ for hour in range(24):
         "Alignment": alignment,
         "Activity": activity,
         "Diurnal Energy": energy,
-        "BPS": bps
+        "BPM": bpm
     })
 
 df = pd.DataFrame(combined_schedule)
@@ -116,7 +121,7 @@ def highlight_alignment(val):
 
 styled_df = df.style.applymap(highlight_alignment, subset=["Alignment"])
 
-st.subheader("📋 Current Mood Alignment and BPS")
+st.subheader("📋 Current Mood Alignment and BPM")
 st.dataframe(styled_df.hide(axis="index"), use_container_width=True)
 
 # --- Editable Activity Schedule BELOW ---

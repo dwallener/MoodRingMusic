@@ -1,9 +1,15 @@
 import streamlit as st
 import pandas as pd
+import os
+
 from midi_generator import MidiGenerator
 from audio_renderer import AudioRenderer
+from soundfont_audio_renderer import SoundFontAudioRenderer
 from markov_melody import MarkovMelodyGenerator
 from motif_melody import MotifMelodyGenerator
+
+import fluidsynth
+from scipy.io.wavfile import write
 
 # ----- Constants -----
 allowed_activities = ["work", "sleep", "free", "play", "family"]
@@ -60,6 +66,21 @@ def is_streamlit_cloud():
 
 if is_streamlit_cloud():
     st.info("🌐 Running on Streamlit Cloud")
+    audio_renderer = AudioRenderer()
+else:
+    st.info("🖥️ Running Locally")
+    renderer_choice = st.radio("Select Audio Engine", ["Sample-Based", "SoundFont"])
+    if renderer_choice == "SoundFont":
+        instrument_program = st.slider("🎹 Instrument Program (0-127)", 0, 127, value=0)
+        audio_renderer = SoundFontAudioRenderer(
+            soundfont_path="soundfonts/FluidR3_GM.sf2",
+            program=instrument_program
+        )
+    else:
+        audio_renderer = AudioRenderer()
+
+if is_streamlit_cloud():
+    st.info("🌐 Running on Streamlit Cloud")
 else:
     st.info("🖥️ Running Locally")
 if "current_hour" not in st.session_state:
@@ -112,7 +133,7 @@ else:
 melody_notes = melody_generator.generate_melody(length=melody_length)
 
 # Audio and MIDI Generation
-audio_renderer = AudioRenderer()
+#audio_renderer = AudioRenderer()
 audio_wave = audio_renderer.generate_song_audio(
     bpm=current_bpm,
     key_root=key_root,

@@ -1,3 +1,4 @@
+# SoundFont version for local generation
 import io
 import os
 import random
